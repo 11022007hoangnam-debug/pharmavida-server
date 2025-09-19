@@ -1,0 +1,12 @@
+# Dependencies
+/node_modules
+
+# Nativefier build output (Rất quan trọng!)
+*-win32-x64/
+*-linux-x64/
+*-darwin-x64/
+Painel de Funcionários-win32-x64/
+Painel de Gestão do Administrador-win32-x64/
+
+# Environment variables
+.env
