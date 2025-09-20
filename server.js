@@ -8,9 +8,10 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-// <<< NÂNG CẤP CUỐI CÙNG: Đơn giản hóa CORS và thêm log chi tiết >>>
-app.use(cors()); // Sử dụng cấu hình CORS đơn giản nhất và hiệu quả nhất
+// Cấu hình CORS đơn giản và hiệu quả nhất cho Vercel và môi trường phát triển
+app.use(cors());
 
+// Cấu hình Socket.IO
 const io = new Server(server, {
     cors: {
         origin: "*",
@@ -20,33 +21,37 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 5000;
 
+// Middlewares
 app.use(express.json());
 
+// Middleware để inject `io` vào mỗi request
 app.use((req, res, next) => {
     req.io = io;
     next();
 });
 
+// Routes
 const studentRoutes = require('./routes/student.routes');
 const transactionRoutes = require('./routes/transaction.routes.js');
 app.use('/api/students', studentRoutes);
 app.use('/api/transactions', transactionRoutes);
 
-// Thêm một route gốc để kiểm tra server có sống không
+// Route gốc để kiểm tra "sức khỏe" của server
 app.get('/', (req, res) => {
   res.send('Server is running and healthy!');
 });
 
-
+// Kết nối đến MongoDB
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
         console.log('✅ Đã kết nối thành công đến MongoDB Atlas!');
     })
     .catch(err => {
         console.error('❌ Lỗi kết nối MongoDB:', err.message);
-        process.exit(1);
+        process.exit(1); // Dừng server nếu không kết nối được DB
     });
 
+// Kết nối Real-time (Socket.IO)
 io.on('connection', (socket) => {
     console.log('✅ Một người dùng đã kết nối real-time.');
     socket.on('disconnect', () => {
@@ -54,6 +59,7 @@ io.on('connection', (socket) => {
     });
 });
 
+// Khởi động server
 server.listen(PORT, () => {
     console.log(`🚀 Server đang chạy trên cổng ${PORT}`);
 });
