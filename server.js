@@ -8,34 +8,15 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 
-// <<< NÂNG CẤP CUỐI CÙNG: Cấu hình CORS chi tiết >>>
-const allowedOrigins = [
-    'http://127.0.0.1:5500', // Cho Live Server
-    'http://localhost:5500'  // Cho Live Server (dự phòng)
-];
+// <<< NÂNG CẤP CUỐI CÙNG: Đơn giản hóa CORS và thêm log chi tiết >>>
+app.use(cors()); // Sử dụng cấu hình CORS đơn giản nhất và hiệu quả nhất
 
-const corsOptions = {
-    origin: function (origin, callback) {
-        // Cho phép các request không có origin (như file .exe sau này) và các origin trong danh sách
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    }
-};
-
-// Áp dụng cấu hình CORS cho các yêu cầu HTTP
-app.use(cors(corsOptions));
-
-// Cấu hình CORS cho Socket.IO
 const io = new Server(server, {
     cors: {
-        origin: "*", // Giữ nguyên '*' cho Socket.IO để linh hoạt
+        origin: "*",
         methods: ["GET", "POST", "PUT", "DELETE"]
     }
 });
-
 
 const PORT = process.env.PORT || 5000;
 
@@ -50,6 +31,12 @@ const studentRoutes = require('./routes/student.routes');
 const transactionRoutes = require('./routes/transaction.routes.js');
 app.use('/api/students', studentRoutes);
 app.use('/api/transactions', transactionRoutes);
+
+// Thêm một route gốc để kiểm tra server có sống không
+app.get('/', (req, res) => {
+  res.send('Server is running and healthy!');
+});
+
 
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
