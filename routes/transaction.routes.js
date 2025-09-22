@@ -4,10 +4,10 @@ const Student = require('../models/student.model');
 const Transaction = require('../models/transaction.model');
 const mongoose = require('mongoose');
 
-// <<< NÂNG CẤP: API MỚI ĐỂ LẤY BÁO CÁO LỢI NHUẬN >>>
+// <<< NÂNG CẤP: API ĐỂ LẤY BÁO CÁO GIAO DỊCH >>>
 router.get('/report', async (req, res) => {
     try {
-        const { startDate, endDate, department } = req.query; // Thêm department
+        const { startDate, endDate, department } = req.query;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ message: 'Ngày bắt đầu và kết thúc là bắt buộc.' });
@@ -26,16 +26,21 @@ router.get('/report', async (req, res) => {
             }
         };
 
-        // Nếu có phòng ban được chọn, thêm vào điều kiện lọc
         if (department) {
             query.department = department;
         }
 
-        const transactions = await Transaction.find(query).sort({ createdAt: -1 });
+        // ======================= FIX HERE =======================
+        // Thêm .populate() để lấy thông tin 'fullName' và 'school' từ model Student
+        // Dựa trên mã nguồn của bạn, trường liên kết là 'student'
+        const transactions = await Transaction.find(query)
+            .sort({ createdAt: -1 })
+            .populate('student', 'fullName school');
+        // ========================================================
 
         res.status(200).json(transactions);
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo lợi nhuận.', error: error.message });
+        res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.', error: error.message });
     }
 });
 
