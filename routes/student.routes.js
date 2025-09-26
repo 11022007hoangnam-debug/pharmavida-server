@@ -3,35 +3,34 @@ const router = express.Router();
 const Student = require('../models/student.model');
 const Transaction = require('../models/transaction.model');
 
-// --- LẤY TẤT CẢ HỌC SINH ---
+// --- LẤY TẤT CẢ BỆNH NHÂN ---
 router.get('/', async (req, res) => {
     try {
         const students = await Student.find();
         res.status(200).json(students);
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server khi lấy danh sách học sinh.' });
+        res.status(500).json({ message: 'Lỗi server khi lấy danh sách bệnh nhân.' });
     }
 });
 
-// --- TÌM KIẾM HỌC SINH (CHO APP NHÂN VIÊN) ---
+// --- TÌM KIẾM BỆNH NHÂN ---
 router.post('/search', async (req, res) => {
     try {
         const { fullName, biNumber } = req.body;
-
         if (!fullName && !biNumber) {
             return res.status(400).json({ message: 'Forneça o Nome ou o Nº de B.I para pesquisar.' });
         }
-
+        
         let query = {};
-        if (fullName) {
-            query.fullName = { $regex: `^${fullName}`, $options: 'i' };
-        }
         if (biNumber) {
-            query.biNumber = biNumber;
+            // Ưu tiên tìm bằng B.I vì nó là duy nhất
+            query = { biNumber: biNumber };
+        } else if (fullName) {
+            // Tìm bằng tên (không phân biệt hoa thường)
+            query = { fullName: new RegExp(`^${fullName}$`, 'i') };
         }
 
-        const finalQuery = biNumber ? { biNumber: biNumber } : query;
-        const student = await Student.findOne(finalQuery);
+        const student = await Student.findOne(query);
 
         if (student) {
             res.status(200).json(student);
@@ -43,13 +42,12 @@ router.post('/search', async (req, res) => {
     }
 });
 
-// --- TẠO MỘT HỌC SINH MỚI (NÂNG CẤP LOGIC NGÂN SÁCH) ---
+// --- TẠO MỘT BỆNH NHÂN MỚI ---
 router.post('/', async (req, res) => {
     try {
         const { fullName, biNumber, phone, school, balance } = req.body;
         const io = req.io;
 
-        // BƯỚC KIỂM TRA QUAN TRỌNG NHẤT
         const studentCount = await Student.countDocuments();
         if (studentCount >= 390) {
             return res.status(403).json({ message: 'O limite de 390 alunos foi atingido. Não é possível adicionar novos registos.' });
@@ -63,14 +61,16 @@ router.post('/', async (req, res) => {
         const newStudent = new Student({ fullName, biNumber, phone, school, balance });
         await newStudent.save();
 
-        if(io) io.emit('dataUpdated', { message: 'Um novo aluno foi adicionado.' });
+        // <<< FIX REAL-TIME >>>: Gửi tín hiệu cho tất cả người dùng khi có bệnh nhân mới
+        if(io) io.emit('dataUpdated', { message: `Um novo paciente foi adicionado: ${newStudent.fullName}` });
+        
         res.status(201).json(newStudent);
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server khi tạo học sinh mới.', error: error.message });
+        res.status(500).json({ message: 'Lỗi server khi tạo bệnh nhân mới.', error: error.message });
     }
 });
 
-// --- CẬP NHẬT THÔNG TIN HỌC SINH ---
+// --- CẬP NHẬT THÔNG TIN BỆNH NHÂN ---
 router.put('/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
@@ -78,18 +78,22 @@ router.put('/:studentId', async (req, res) => {
         const io = req.io;
 
         const updatedStudent = await Student.findByIdAndUpdate(studentId, updateData, { new: true });
+        
         if (!updatedStudent) {
-            return res.status(404).json({ message: 'Aluno não encontrado para atualizar.' });
+            return res.status(404).json({ message: 'Paciente não encontrado para atualizar.' });
         }
 
+        // <<< FIX REAL-TIME >>>: Gửi tín hiệu khi thông tin (bao gồm cả số dư) được cập nhật
         if(io) io.emit('dataUpdated', { message: `As informações de ${updatedStudent.fullName} foram atualizadas.` });
+        
         res.status(200).json(updatedStudent);
-    } catch (error) {
+    } catch (error)
+    {
         res.status(500).json({ message: 'Lỗi server khi cập nhật thông tin.', error: error.message });
     }
 });
 
-// --- XÓA MỘT HỌC SINH ---
+// --- XÓA MỘT BỆNH NHÂN ---
 router.delete('/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
@@ -97,14 +101,17 @@ router.delete('/:studentId', async (req, res) => {
 
         await Transaction.deleteMany({ student: studentId });
         const deletedStudent = await Student.findByIdAndDelete(studentId);
+
         if (!deletedStudent) {
-            return res.status(404).json({ message: 'Aluno não encontrado para eliminar.' });
+            return res.status(404).json({ message: 'Paciente não encontrado para eliminar.' });
         }
 
+        // <<< FIX REAL-TIME >>>: Gửi tín hiệu khi một bệnh nhân bị xóa
         if(io) io.emit('dataUpdated', { message: `O registo de ${deletedStudent.fullName} foi eliminado.` });
-        res.status(200).json({ message: 'Aluno e transações associadas foram eliminados com sucesso.' });
+        
+        res.status(200).json({ message: 'Paciente e transações associadas foram eliminados com sucesso.' });
     } catch (error) {
-        res.status(500).json({ message: 'Lỗi server khi xóa học sinh.', error: error.message });
+        res.status(500).json({ message: 'Lỗi server khi xóa bệnh nhân.', error: error.message });
     }
 });
 
