@@ -25,7 +25,8 @@ const transactionSchema = new mongoose.Schema({
     department: {
         type: String,
         required: true,
-        enum: ['Centro Médico', 'Farmácia']
+        // <<< NÂNG CẤP: Thêm 'Administração' vào danh sách các giá trị hợp lệ >>>
+        enum: ['Centro Médico', 'Farmácia', 'Administração']
     }
 }, {
     timestamps: true
