@@ -4,69 +4,80 @@ const Student = require('../models/student.model');
 const Transaction = require('../models/transaction.model');
 const mongoose = require('mongoose');
 
+// ==========================================================
+// THỨ TỰ ĐÚNG: CÁC ROUTE CỤ THỂ PHẢI ĐƯỢC ĐẶT TRƯỚC
+// ==========================================================
+
+// API ĐỂ LẤY GIAO DỊCH THEO NGÀY
+router.get('/by-date', async (req, res) => {
+    try {
+        const { date } = req.query;
+        if (!date) {
+            return res.status(400).json({ message: 'Ngày là bắt buộc.' });
+        }
+        const startOfDay = new Date(date);
+        startOfDay.setUTCHours(0, 0, 0, 0);
+        const endOfDay = new Date(date);
+        endOfDay.setUTCHours(23, 59, 59, 999);
+        const transactions = await Transaction.find({
+            createdAt: { $gte: startOfDay, $lte: endOfDay }
+        })
+        .sort({ createdAt: -1 })
+        .populate('student', 'fullName');
+        res.status(200).json(transactions);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi lấy lịch sử giao dịch theo ngày.', error: error.message });
+    }
+});
+
 // API ĐỂ LẤY BÁO CÁO GIAO DỊCH
 router.get('/report', async (req, res) => {
     try {
         const { startDate, endDate, department } = req.query;
-
         if (!startDate || !endDate) {
             return res.status(400).json({ message: 'Ngày bắt đầu và kết thúc là bắt buộc.' });
         }
-
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
-
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-
-        let query = {
-            createdAt: {
-                $gte: start,
-                $lte: end
-            }
-        };
-
+        let query = { createdAt: { $gte: start, $lte: end } };
         if (department) {
             query.department = department;
         }
-
         const transactions = await Transaction.find(query)
             .sort({ createdAt: -1 })
             .populate('student', 'fullName school');
-
         res.status(200).json(transactions);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.', error: error.message });
     }
 });
 
+// ==========================================================
+// ROUTE CHUNG CHUNG VỚI THAM SỐ ĐỘNG PHẢI ĐẶT Ở CUỐI CÙNG
+// ==========================================================
+
 // LẤY LỊCH SỬ GIAO DỊCH CỦA MỘT BỆNH NHÂN
 router.get('/:studentId', async (req, res) => {
     try {
         const { studentId } = req.params;
-        const { startDate, endDate } = req.query; 
-
+        const { startDate, endDate } = req.query;
         let query = { student: studentId };
-
         if (startDate && endDate) {
             const start = new Date(startDate);
             start.setHours(0, 0, 0, 0);
-
             const end = new Date(endDate);
             end.setHours(23, 59, 59, 999);
-
-            query.createdAt = {
-                $gte: start,
-                $lte: end
-            };
+            query.createdAt = { $gte: start, $lte: end };
         }
-
         const transactions = await Transaction.find(query).sort({ createdAt: -1 });
         res.status(200).json(transactions);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi lấy lịch sử giao dịch.', error: error.message });
     }
 });
+
 
 // TẠO MỘT GIAO DỊCH MỚI
 router.post('/', async (req, res) => {
@@ -81,8 +92,6 @@ router.post('/', async (req, res) => {
             throw new Error('Paciente não encontrado.');
         }
 
-        // <<< NÂNG CẤP LOGIC: BỎ QUA KIỂM TRA CHO ADMIN >>>
-        // Chỉ kiểm tra số dư và hóa đơn trùng lặp nếu người thực hiện không phải là Admin
         if (attendedBy !== 'Admin') {
             const existingTransaction = await Transaction.findOne({ student: studentId, service: service }).session(session);
             if (existingTransaction) {
@@ -95,19 +104,16 @@ router.post('/', async (req, res) => {
                 throw new Error('Saldo insuficiente para a transação.');
             }
         }
-        // <<< KẾT THÚC NÂNG CẤP >>>
 
         const newBalance = student.balance - amount;
+        student.balance = newBalance;
+        await student.save({ session });
 
         const newTransaction = new Transaction({
             student: studentId, service, amount, newBalance,
             attendedBy, department
         });
-
         await newTransaction.save({ session });
-        
-        student.balance = newBalance;
-        await student.save({ session });
         
         await session.commitTransaction();
 
@@ -116,7 +122,7 @@ router.post('/', async (req, res) => {
 
     } catch (error) {
         await session.abortTransaction();
-        throw error;
+        res.status(500).json({ message: 'Erro ao criar transação.', error: error.message });
     } finally {
         session.endSession();
     }
@@ -155,5 +161,6 @@ router.delete('/:id', async (req, res) => {
         session.endSession();
     }
 });
+
 
 module.exports = router;
