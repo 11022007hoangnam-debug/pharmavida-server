@@ -4,39 +4,6 @@ const Student = require('../models/student.model');
 const Transaction = require('../models/transaction.model');
 const mongoose = require('mongoose');
 
-// <<< NÂNG CẤP MỚI: API ĐỂ LẤY GIAO DỊCH THEO NGÀY (FIX LỖI) >>>
-router.get('/by-date', async (req, res) => {
-    try {
-        const { date } = req.query;
-
-        if (!date) {
-            return res.status(400).json({ message: 'Ngày là bắt buộc.' });
-        }
-
-        const startOfDay = new Date(date);
-        startOfDay.setUTCHours(0, 0, 0, 0);
-
-        const endOfDay = new Date(date);
-        endOfDay.setUTCHours(23, 59, 59, 999);
-
-        const transactions = await Transaction.find({
-            createdAt: {
-                $gte: startOfDay,
-                $lte: endOfDay
-            }
-        })
-        .sort({ createdAt: -1 })
-        .populate('student', 'fullName'); // Lấy thêm thông tin tên của bệnh nhân
-
-        res.status(200).json(transactions);
-
-    } catch (error) {
-        // Thay đổi thông báo lỗi để rõ ràng hơn
-        res.status(500).json({ message: 'Lỗi server khi lấy lịch sử giao dịch theo ngày.', error: error.message });
-    }
-});
-
-
 // API ĐỂ LẤY BÁO CÁO GIAO DỊCH
 router.get('/report', async (req, res) => {
     try {
@@ -62,7 +29,7 @@ router.get('/report', async (req, res) => {
         if (department) {
             query.department = department;
         }
-        
+
         const transactions = await Transaction.find(query)
             .sort({ createdAt: -1 })
             .populate('student', 'fullName school');
@@ -108,32 +75,39 @@ router.post('/', async (req, res) => {
     try {
         const { studentId, service, amount, attendedBy, department } = req.body;
         const io = req.io;
-
-        const existingTransaction = await Transaction.findOne({ student: studentId, service: service }).session(session);
-        if (existingTransaction) {
-            const invoiceNumber = service.trim();
-            return res.status(409).json({
-                message: `Já existe uma transação com o número de fatura '${invoiceNumber}'. Por favor, verifique novamente antes de salvar.`
-            });
-        }
-
+        
         const student = await Student.findById(studentId).session(session);
         if (!student) {
             throw new Error('Paciente não encontrado.');
         }
-        if (student.balance < amount) {
-            throw new Error('Saldo insuficiente para a transação.');
+
+        // <<< NÂNG CẤP LOGIC: BỎ QUA KIỂM TRA CHO ADMIN >>>
+        // Chỉ kiểm tra số dư và hóa đơn trùng lặp nếu người thực hiện không phải là Admin
+        if (attendedBy !== 'Admin') {
+            const existingTransaction = await Transaction.findOne({ student: studentId, service: service }).session(session);
+            if (existingTransaction) {
+                const invoiceNumber = service.trim();
+                return res.status(409).json({
+                    message: `Já existe uma transação com o número de fatura '${invoiceNumber}'. Por favor, verifique novamente antes de salvar.`
+                });
+            }
+            if (student.balance < amount) {
+                throw new Error('Saldo insuficiente para a transação.');
+            }
         }
+        // <<< KẾT THÚC NÂNG CẤP >>>
 
         const newBalance = student.balance - amount;
-        student.balance = newBalance;
-        await student.save({ session });
 
         const newTransaction = new Transaction({
             student: studentId, service, amount, newBalance,
             attendedBy, department
         });
+
         await newTransaction.save({ session });
+        
+        student.balance = newBalance;
+        await student.save({ session });
         
         await session.commitTransaction();
 
@@ -142,7 +116,7 @@ router.post('/', async (req, res) => {
 
     } catch (error) {
         await session.abortTransaction();
-        res.status(500).json({ message: 'Erro ao criar transação.', error: error.message });
+        throw error;
     } finally {
         session.endSession();
     }
@@ -181,6 +155,5 @@ router.delete('/:id', async (req, res) => {
         session.endSession();
     }
 });
-
 
 module.exports = router;
