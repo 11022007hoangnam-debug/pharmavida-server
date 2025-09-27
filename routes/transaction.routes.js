@@ -33,21 +33,39 @@ router.get('/by-date', async (req, res) => {
 // API ĐỂ LẤY BÁO CÁO GIAO DỊCH
 router.get('/report', async (req, res) => {
     try {
-        const { startDate, endDate, department } = req.query;
+        // <<< NÂNG CẤP: Thêm "school" vào để nhận giá trị từ bộ lọc >>>
+        const { startDate, endDate, department, school } = req.query; 
+
         if (!startDate || !endDate) {
             return res.status(400).json({ message: 'Ngày bắt đầu và kết thúc là bắt buộc.' });
         }
+
         const start = new Date(startDate);
         start.setHours(0, 0, 0, 0);
         const end = new Date(endDate);
         end.setHours(23, 59, 59, 999);
-        let query = { createdAt: { $gte: start, $lte: end } };
+
+        let query = {
+            createdAt: { $gte: start, $lte: end }
+        };
+
         if (department) {
             query.department = department;
         }
+        
+        // <<< NÂNG CẤP: Logic để lọc theo trường học >>>
+        if (school) {
+            // 1. Tìm tất cả ID của sinh viên thuộc trường được chọn
+            const studentsInSchool = await Student.find({ school: school }).select('_id');
+            const studentIds = studentsInSchool.map(s => s._id);
+            // 2. Thêm điều kiện vào query để chỉ tìm giao dịch của các sinh viên đó
+            query.student = { $in: studentIds };
+        }
+        
         const transactions = await Transaction.find(query)
             .sort({ createdAt: -1 })
             .populate('student', 'fullName school');
+
         res.status(200).json(transactions);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi lấy báo cáo.', error: error.message });
