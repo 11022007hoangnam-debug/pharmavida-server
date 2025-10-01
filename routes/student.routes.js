@@ -42,6 +42,33 @@ router.post('/search', async (req, res) => {
     }
 });
 
+// --- (NÂNG CẤP) API GỢI Ý TÌM KIẾM (AUTOCOMPLETE) ---
+router.get('/autocomplete', async (req, res) => {
+    try {
+        const term = req.query.term; // Lấy ký tự gõ từ query parameter 'term'
+
+        if (!term) {
+            // Nếu không có 'term', trả về mảng rỗng
+            return res.json([]);
+        }
+
+        // Tạo một biểu thức chính quy (regex) để tìm kiếm tên có chứa 'term'
+        // 'i' là để không phân biệt chữ hoa/thường
+        const regex = new RegExp(term, 'i');
+
+        // Tìm các bệnh nhân có tên khớp với regex, giới hạn 10 kết quả
+        // và chỉ chọn trường fullName để gửi về cho nhẹ
+        const students = await Student.find({ fullName: regex })
+                                      .limit(10)
+                                      .select('fullName');
+
+        res.status(200).json(students);
+    } catch (error) {
+        res.status(500).json({ message: 'Lỗi server khi thực hiện tìm kiếm gợi ý.' });
+    }
+});
+
+
 // --- TẠO MỘT BỆNH NHÂN MỚI ---
 router.post('/', async (req, res) => {
     try {
