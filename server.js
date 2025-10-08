@@ -1,15 +1,19 @@
-// server.js (PHIÊN BẢN ĐÃ SỬA LỖI)
+// server.js (PHIÊN BẢN NÂNG CẤP)
 const express = require('express');
 const mongoose = require('mongoose');
 const http = require('http');
 const { Server } = require("socket.io");
 const cors = require('cors');
+
+// NÂNG CẤP: Đảm bảo dòng này nằm ở trên cùng để nạp các biến môi trường
 require('dotenv').config();
 
 // --- BẮT ĐẦU PHẦN MÃ CHẨN ĐOÁN ---
-console.log('---[ BẮT ĐẦU KIỂM TRA BIẾN MÔI TRƯỜNG ]---');
+console.log('---[ BẮT ĐẦU KIỂM TRA BIẾN MÔI TRƯỜDNG ]---');
 console.log('Giá trị của process.env.PORT:', process.env.PORT);
 console.log('Giá trị của process.env.MONGODB_URI:', process.env.MONGODB_URI ? 'Đã có giá trị' : '!!! RỖNG !!!');
+// Thêm kiểm tra cho mật khẩu admin mới
+console.log('Giá trị của process.env.ADMIN_PASSWORD:', process.env.ADMIN_PASSWORD ? 'Đã có giá trị' : '!!! RỖNG !!!');
 console.log('---[ KẾT THÚC KIỂM TRA BIẾN MÔI TRƯỜNG ]---\n');
 // --- KẾT THÚC PHẦN MÃ CHẨN ĐOÁN ---
 

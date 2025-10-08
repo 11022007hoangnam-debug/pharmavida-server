@@ -33,7 +33,6 @@ router.get('/by-date', async (req, res) => {
 // API ĐỂ LẤY BÁO CÁO GIAO DỊCH
 router.get('/report', async (req, res) => {
     try {
-        // <<< NÂNG CẤP: Thêm "school" vào để nhận giá trị từ bộ lọc >>>
         const { startDate, endDate, department, school } = req.query; 
 
         if (!startDate || !endDate) {
@@ -53,12 +52,9 @@ router.get('/report', async (req, res) => {
             query.department = department;
         }
         
-        // <<< NÂNG CẤP: Logic để lọc theo trường học >>>
         if (school) {
-            // 1. Tìm tất cả ID của sinh viên thuộc trường được chọn
             const studentsInSchool = await Student.find({ school: school }).select('_id');
             const studentIds = studentsInSchool.map(s => s._id);
-            // 2. Thêm điều kiện vào query để chỉ tìm giao dịch của các sinh viên đó
             query.student = { $in: studentIds };
         }
         
@@ -154,13 +150,36 @@ router.delete('/:id', async (req, res) => {
         const { id } = req.params;
         const io = req.io;
 
+        // <<< NÂNG CẤP: Lấy thông tin từ header để xác định Chế độ Bảo trì >>>
+        const isMaintenanceMode = req.headers['x-maintenance-mode'] === 'true';
+        const adminPassword = process.env.ADMIN_PASSWORD; // Đọc trực tiếp từ .env
+        const sentPassword = req.headers['x-admin-password'];
+        
+        // <<< NÂNG CẤP AN TOÀN: Chỉ cho phép override nếu mật khẩu admin tồn tại và khớp >>>
+        const isAdminOverride = isMaintenanceMode && adminPassword && (sentPassword === adminPassword);
+
         const transactionToDelete = await Transaction.findById(id).session(session);
         if (!transactionToDelete) {
             throw new Error('Transação não encontrada.');
         }
 
+        // <<< LOGIC KIỂM TRA MỚI >>>
+        // Chỉ kiểm tra ngày tháng nếu KHÔNG ở trong Chế độ Bảo trì
+        if (!isAdminOverride) {
+            const transactionDate = new Date(transactionToDelete.createdAt);
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+            if (transactionDate < thirtyDaysAgo) {
+                // Nếu giao dịch cũ hơn 30 ngày và không phải admin đang bảo trì -> CẤM
+                throw new Error('Não é permitido eliminar transações com mais de 30 dias.');
+            }
+        }
+        // Nếu là Admin Override, logic này sẽ được bỏ qua và đi tiếp
+
         const student = await Student.findById(transactionToDelete.student).session(session);
         if (student) {
+            // Hoàn lại tiền cho bệnh nhân
             student.balance += transactionToDelete.amount;
             await student.save({ session });
         }
