@@ -11,19 +11,33 @@ const mongoose = require('mongoose');
 // API ĐỂ LẤY GIAO DỊCH THEO NGÀY
 router.get('/by-date', async (req, res) => {
     try {
-        const { date } = req.query;
+        const { date, name } = req.query; // <<< NÂNG CẤP: Nhận thêm tham số 'name'
         if (!date) {
             return res.status(400).json({ message: 'Ngày là bắt buộc.' });
         }
+        
         // <<< SỬA LỖI MÚI GIỜ: Buộc server hiểu ngày theo chuẩn UTC >>>
         const startOfDay = new Date(`${date}T00:00:00.000Z`);
         const endOfDay = new Date(`${date}T23:59:59.999Z`);
 
-        const transactions = await Transaction.find({
+        let query = {
             createdAt: { $gte: startOfDay, $lte: endOfDay }
-        })
+        };
+
+        // <<< NÂNG CẤP: Logic lọc theo tên >>>
+        if (name) {
+            // 1. Tìm tất cả các bệnh nhân có tên khớp (không phân biệt hoa thường)
+            const students = await Student.find({ fullName: { $regex: name, $options: 'i' } }).select('_id');
+            const studentIds = students.map(s => s._id);
+            
+            // 2. Thêm điều kiện vào câu truy vấn: chỉ lấy giao dịch của những bệnh nhân này
+            query.student = { $in: studentIds };
+        }
+
+        const transactions = await Transaction.find(query)
         .sort({ createdAt: -1 })
         .populate('student', 'fullName');
+        
         res.status(200).json(transactions);
     } catch (error) {
         res.status(500).json({ message: 'Lỗi server khi lấy lịch sử giao dịch theo ngày.', error: error.message });
