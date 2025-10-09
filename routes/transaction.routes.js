@@ -15,10 +15,10 @@ router.get('/by-date', async (req, res) => {
         if (!date) {
             return res.status(400).json({ message: 'Ngày là bắt buộc.' });
         }
-        const startOfDay = new Date(date);
-        startOfDay.setUTCHours(0, 0, 0, 0);
-        const endOfDay = new Date(date);
-        endOfDay.setUTCHours(23, 59, 59, 999);
+        // <<< SỬA LỖI MÚI GIỜ: Buộc server hiểu ngày theo chuẩn UTC >>>
+        const startOfDay = new Date(`${date}T00:00:00.000Z`);
+        const endOfDay = new Date(`${date}T23:59:59.999Z`);
+
         const transactions = await Transaction.find({
             createdAt: { $gte: startOfDay, $lte: endOfDay }
         })
@@ -39,10 +39,9 @@ router.get('/report', async (req, res) => {
             return res.status(400).json({ message: 'Ngày bắt đầu và kết thúc là bắt buộc.' });
         }
 
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        // <<< SỬA LỖI MÚI GIỜ: Buộc server hiểu ngày theo chuẩn UTC >>>
+        const start = new Date(`${startDate}T00:00:00.000Z`);
+        const end = new Date(`${endDate}T23:59:59.999Z`);
 
         let query = {
             createdAt: { $gte: start, $lte: end }
@@ -79,10 +78,9 @@ router.get('/:studentId', async (req, res) => {
         const { startDate, endDate } = req.query;
         let query = { student: studentId };
         if (startDate && endDate) {
-            const start = new Date(startDate);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(endDate);
-            end.setHours(23, 59, 59, 999);
+            // <<< SỬA LỖI MÚI GIỜ: Buộc server hiểu ngày theo chuẩn UTC >>>
+            const start = new Date(`${startDate}T00:00:00.000Z`);
+            const end = new Date(`${endDate}T23:59:59.999Z`);
             query.createdAt = { $gte: start, $lte: end };
         }
         const transactions = await Transaction.find(query).sort({ createdAt: -1 });
@@ -150,12 +148,10 @@ router.delete('/:id', async (req, res) => {
         const { id } = req.params;
         const io = req.io;
 
-        // <<< NÂNG CẤP: Lấy thông tin từ header để xác định Chế độ Bảo trì >>>
         const isMaintenanceMode = req.headers['x-maintenance-mode'] === 'true';
-        const adminPassword = process.env.ADMIN_PASSWORD; // Đọc trực tiếp từ .env
+        const adminPassword = process.env.ADMIN_PASSWORD;
         const sentPassword = req.headers['x-admin-password'];
         
-        // <<< NÂNG CẤP AN TOÀN: Chỉ cho phép override nếu mật khẩu admin tồn tại và khớp >>>
         const isAdminOverride = isMaintenanceMode && adminPassword && (sentPassword === adminPassword);
 
         const transactionToDelete = await Transaction.findById(id).session(session);
@@ -163,23 +159,21 @@ router.delete('/:id', async (req, res) => {
             throw new Error('Transação não encontrada.');
         }
 
-        // <<< LOGIC KIỂM TRA MỚI >>>
+        // <<< SỬA LỖI MÚI GIỜ CHUYÊN NGHIỆP >>>
         // Chỉ kiểm tra ngày tháng nếu KHÔNG ở trong Chế độ Bảo trì
         if (!isAdminOverride) {
-            const transactionDate = new Date(transactionToDelete.createdAt);
-            const thirtyDaysAgo = new Date();
-            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const nowUTC = new Date();
+            const thirtyDaysAgoUTC = new Date(nowUTC.getTime());
+            thirtyDaysAgoUTC.setUTCDate(thirtyDaysAgoUTC.getUTCDate() - 30);
+            const transactionDateUTC = new Date(transactionToDelete.createdAt);
 
-            if (transactionDate < thirtyDaysAgo) {
-                // Nếu giao dịch cũ hơn 30 ngày và không phải admin đang bảo trì -> CẤM
+            if (transactionDateUTC < thirtyDaysAgoUTC) {
                 throw new Error('Não é permitido eliminar transações com mais de 30 dias.');
             }
         }
-        // Nếu là Admin Override, logic này sẽ được bỏ qua và đi tiếp
 
         const student = await Student.findById(transactionToDelete.student).session(session);
         if (student) {
-            // Hoàn lại tiền cho bệnh nhân
             student.balance += transactionToDelete.amount;
             await student.save({ session });
         }
